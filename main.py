@@ -30,19 +30,6 @@ bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_t
 # لیست موقت ضد تکرار پیام
 processed_messages = set()
 
-# تابع کمکی ترجمه مجهز به تایم‌اوت ۵ ثانیه‌ای
-async def translate_with_timeout(text, timeout_seconds=5):
-    try:
-        loop = asyncio.get_event_loop()
-        translated = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: GoogleTranslator(source='auto', target='fa').translate(text)),
-            timeout=timeout_seconds
-        )
-        return translated
-    except Exception as e:
-        print(f"Translation timeout or error: {e}")
-        return text
-
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
     # ۱. بررسی اینکه پیام حتماً در تاپیک مورد نظر باشد
@@ -50,7 +37,7 @@ async def handler(event):
     if current_topic != TARGET_TOPIC_ID:
         return
 
-    # ۲. فیلتر کردن انواع رسانه‌ها
+    # ۲. فیلتر کردن انواع رسانه‌ها (ویدیو، فایل، موزیک و ویس)
     has_media = (
         event.message.video or 
         event.message.document or 
@@ -69,11 +56,7 @@ async def handler(event):
         caption = event.message.text or ""
         
         if caption:
-            # ۳. ترجمه متن با امنیت بالا
-            if any(c.isalnum() for c in caption):
-                caption = await translate_with_timeout(caption, timeout_seconds=5)
-
-            # ۴. پاک کردن خطوط حاوی آیدی یا لینک
+            # ۳. پاک کردن خطوط حاوی آیدی یا لینک
             lines = caption.split('\n')
             cleaned_lines = []
             for line in lines:
@@ -81,7 +64,7 @@ async def handler(event):
                     cleaned_lines.append(line)
             caption = '\n'.join(cleaned_lines).strip()
             
-            # ۵. حذف تبلیغات انتهای کپشن
+            # ۴. حذف تبلیغات انتهای کپشن (۱ تا ۴ کلمه‌ای)
             caption_lines = caption.split('\n')
             if caption_lines:
                 last_line = caption_lines[-1].strip()
@@ -89,7 +72,7 @@ async def handler(event):
                     caption_lines.pop()
                     caption = '\n'.join(caption_lines).strip()
 
-        # ۶. اضافه کردن امضا
+        # ۵. اضافه کردن امضا با یک خط فاصله
         signature = "\n\n🆔 @rash_kham"
         final_caption = caption + signature if caption else "🆔 @rash_kham"
         
@@ -104,5 +87,5 @@ async def handler(event):
         except Exception as e:
             print(f"Error sending file: {e}")
 
-print("ربات دوم اصلاح شد و آنلاین است!")
+print("ربات دوم بدون مترجم و با سرعت بالا آنلاین شد!")
 bot.run_until_disconnected()
