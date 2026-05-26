@@ -7,7 +7,7 @@ from threading import Thread
 # --- تنظیمات ربات دوم (این مقادیر را دقیق تغییر دهید) ---
 API_ID = 36850805            # همان ای‌آی‌دی قبلی شما
 API_HASH = 'f3e90cffb1a5ca214883a0b886ad62b4'  # همان ای‌پ‌آی هش قبلی شما
-BOT_TOKEN = 'your_NEW_bot_token'  # توکن ربات جدید (دوم) شما
+BOT_TOKEN = '303518559:AAEHaWu6bPyirGk9wEEeggpa6j3ze85KtMo'  # توکن ربات جدید (دوم) شما
 
 SOURCE_GROUP_ID = -1002201375304  # آیدی عددی گروه مبدا جدید
 TARGET_CHANNEL_ID = -1001441969577  # آیدی عددی کانال مقصد جدید
