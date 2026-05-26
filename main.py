@@ -35,14 +35,20 @@ processed_messages = set()
 # عدد آیدی موضوع "در صف انتشار" را اینجا وارد کنید (مثلاً 45)
 TARGET_TOPIC_ID = 234 
 
+from deep_translator import GoogleTranslator
+
+# لیست موقت ضد تکرار پیام
+processed_messages = set()
+
+# عدد آیدی موضوع "در صف انتشار" را اینجا وارد کنید (مثلاً 45)
+TARGET_TOPIC_ID = 45 
+
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
-    # ۱. بررسی اینکه پیام حتماً متعلق به موضوع (Topic) مورد نظر باشد
-    # در تلگرام پیام‌های تاپیک‌ها به عنوان ریپلای به آیدی آن تاپیک شناخته می‌شوند
+    # ۱. بررسی موضوع (Topic)
     current_topic = event.message.reply_to_msg_id
-    
     if current_topic != TARGET_TOPIC_ID:
-        return # اگر پیام در این موضوع نبود، ربات بی‌خیال می‌شود و ادامه نمی‌دهد
+        return
 
     # ۲. فیلتر کردن انواع رسانه‌ها
     has_media = (
@@ -63,7 +69,14 @@ async def handler(event):
         caption = event.message.text or ""
         
         if caption:
-            # ۳. پاک کردن خطوط حاوی آیدی یا لینک
+            # ۳. ترجمه خودکار متن به فارسی (از هر زبانی که باشد)
+            try:
+                caption = GoogleTranslator(source='auto', target='fa').translate(caption)
+            except Exception as e:
+                print(f"تداخل در ترجمه: {e}")
+                # اگر ترجمه به هر دلیلی خطا داد، متن اصلی حفظ می‌شود تا ربات متوقف نشود
+
+            # ۴. پاک کردن خطوط حاوی آیدی یا لینک
             lines = caption.split('\n')
             cleaned_lines = []
             for line in lines:
@@ -72,7 +85,7 @@ async def handler(event):
             
             caption = '\n'.join(cleaned_lines).strip()
             
-            # ۴. حذف کردن نوشته‌های تبلیغاتی انتهای کپشن
+            # ۵. حذف کردن نوشته‌های تبلیغاتی انتهای کپشن
             caption_lines = caption.split('\n')
             if caption_lines:
                 last_line = caption_lines[-1].strip()
@@ -80,7 +93,7 @@ async def handler(event):
                     caption_lines.pop()
                     caption = '\n'.join(caption_lines).strip()
 
-        # ۵. اضافه کردن امضای جدید با یک خط فاصله
+        # ۶. اضافه کردن امضای جدید با یک خط فاصله
         signature = "\n\n🆔 @rash_kham"
         final_caption = caption + signature if caption else "🆔 @rash_kham"
         
@@ -95,5 +108,5 @@ async def handler(event):
         except Exception as e:
             print(f"Error: {e}")
 
-print("ربات دوم (مخصوص تاپیک در صف انتشار) روشن شد!")
+print("ربات مترجم و ضدتبلیغات روشن شد!")
 bot.run_until_disconnected()
