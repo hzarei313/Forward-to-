@@ -3,6 +3,8 @@ import os
 from telethon import TelegramClient, events
 from flask import Flask
 from threading import Thread
+import asyncio
+from deep_translator import GoogleTranslator
 
 # --- تنظیمات ربات دوم (این مقادیر را دقیق تغییر دهید) ---
 API_ID = 36850805            # همان ای‌آی‌دی قبلی شما
@@ -23,77 +25,84 @@ def run():
 
 Thread(target=run).start()
 
-# تغییر نام سشن برای اینکه با ربات اول تداخل پیدا نکند
 bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # لیست موقت ضد تکرار پیام
 processed_messages = set()
 
-# لیست موقت ضد تکرار پیام
-processed_messages = set()
-
-# عدد آیدی موضوع "در صف انتشار" را اینجا وارد کنید (مثلاً 45)
-TARGET_TOPIC_ID = 234 
-
-from deep_translator import GoogleTranslator
-
-# لیست موقت ضد تکرار پیام
-processed_messages = set()
-from deep_translator import GoogleTranslator
-
-# لیست موقت ضد تکرار پیام
-processed_messages = set()
+# تابع کمکی ترجمه مجهز به تایم‌اوت ۵ ثانیه‌ای
+async def translate_with_timeout(text, timeout_seconds=5):
+    try:
+        loop = asyncio.get_event_loop()
+        translated = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: GoogleTranslator(source='auto', target='fa').translate(text)),
+            timeout=timeout_seconds
+        )
+        return translated
+    except Exception as e:
+        print(f"Translation timeout or error: {e}")
+        return text
 
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
-    # جلوگیری از ارسال پیام تکراری
-    if event.message.id in processed_messages:
+    # ۱. بررسی اینکه پیام حتماً در تاپیک مورد نظر باشد
+    current_topic = event.message.reply_to_msg_id
+    if current_topic != TARGET_TOPIC_ID:
         return
-    processed_messages.add(event.message.id)
-    if len(processed_messages) > 100:
-        processed_messages.clear()
 
-    caption = event.message.text or ""
+    # ۲. فیلتر کردن انواع رسانه‌ها
+    has_media = (
+        event.message.video or 
+        event.message.document or 
+        event.message.audio or 
+        event.message.voice
+    )
     
-    if caption:
-        # ساختار جدید و امن برای بخش ترجمه
-        try:
-            # بررسی اینکه متن خالی یا فقط شامل اموجی نباشد
-            if any(c.isalnum() for c in caption):
-                translated = GoogleTranslator(source='auto', target='fa').translate(caption)
-                if translated:
-                    caption = translated
-        except Exception as translate_error:
-            # اگر ترجمه خطا داد، فقط ارور را در سرور چاپ کن و متوقف نشو
-            print(f"Translation skipped due to error: {translate_error}")
+    if has_media:
+        # جلوگیری از ارسال پیام تکراری
+        if event.message.id in processed_messages:
+            return
+        processed_messages.add(event.message.id)
+        if len(processed_messages) > 100:
+            processed_messages.clear()
 
-        # پاک کردن خطوط حاوی آیدی یا لینک
-        lines = caption.split('\n')
-        cleaned_lines = []
-        for line in lines:
-            if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', line):
-                cleaned_lines.append(line)
-        caption = '\n'.join(cleaned_lines).strip()
+        caption = event.message.text or ""
         
-        # حذف تبلیغات انتهای کپشن (۱ تا ۴ کلمه ای)
-        caption_lines = caption.split('\n')
-        if caption_lines:
-            last_line = caption_lines[-1].strip()
-            if 0 < len(last_line.split()) < 5:
-                caption_lines.pop()
-                caption = '\n'.join(caption_lines).strip()
+        if caption:
+            # ۳. ترجمه متن با امنیت بالا
+            if any(c.isalnum() for c in caption):
+                caption = await translate_with_timeout(caption, timeout_seconds=5)
 
-    # اضافه کردن امضا با یک خط فاصله
-    signature = "\n\n🆔 @rash_kham"
-    final_caption = caption + signature if caption else "🆔 @rash_kham"
-    
-    try:
-        if event.message.media:
-            await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
-        elif final_caption:
-            await bot.send_message(TARGET_CHANNEL_ID, final_caption)
-    except Exception as send_error:
-        print(f"Error sending to channel: {send_error}")
+            # ۴. پاک کردن خطوط حاوی آیدی یا لینک
+            lines = caption.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', line):
+                    cleaned_lines.append(line)
+            caption = '\n'.join(cleaned_lines).strip()
+            
+            # ۵. حذف تبلیغات انتهای کپشن
+            caption_lines = caption.split('\n')
+            if caption_lines:
+                last_line = caption_lines[-1].strip()
+                if 0 < len(last_line.split()) < 5:
+                    caption_lines.pop()
+                    caption = '\n'.join(caption_lines).strip()
 
-print("ربات دوم (نسخه ضد ضربه و مترجم) روشن شد!")
+        # ۶. اضافه کردن امضا
+        signature = "\n\n🆔 @rash_kham"
+        final_caption = caption + signature if caption else "🆔 @rash_kham"
+        
+        try:
+            media_to_send = (
+                event.message.video or 
+                event.message.document or 
+                event.message.audio or 
+                event.message.voice
+            )
+            await bot.send_file(TARGET_CHANNEL_ID, media_to_send, caption=final_caption)
+        except Exception as e:
+            print(f"Error sending file: {e}")
+
+print("ربات دوم اصلاح شد و آنلاین است!")
 bot.run_until_disconnected()
