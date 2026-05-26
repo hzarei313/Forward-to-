@@ -39,10 +39,6 @@ from deep_translator import GoogleTranslator
 
 # لیست موقت ضد تکرار پیام
 processed_messages = set()
-
-# عدد آیدی موضوع "در صف انتشار" را اینجا وارد کنید (مثلاً 45)
-TARGET_TOPIC_ID = 45 
-
 from deep_translator import GoogleTranslator
 
 # لیست موقت ضد تکرار پیام
@@ -57,15 +53,19 @@ async def handler(event):
     if len(processed_messages) > 100:
         processed_messages.clear()
 
-    # گرفتن متن پیام (چه همراه فایل باشد چه متن خالی)
     caption = event.message.text or ""
     
     if caption:
+        # ساختار جدید و امن برای بخش ترجمه
         try:
-            # ترجمه به فارسی
-            caption = GoogleTranslator(source='auto', target='fa').translate(caption)
-        except Exception as e:
-            print(f"Translation Error: {e}")
+            # بررسی اینکه متن خالی یا فقط شامل اموجی نباشد
+            if any(c.isalnum() for c in caption):
+                translated = GoogleTranslator(source='auto', target='fa').translate(caption)
+                if translated:
+                    caption = translated
+        except Exception as translate_error:
+            # اگر ترجمه خطا داد، فقط ارور را در سرور چاپ کن و متوقف نشو
+            print(f"Translation skipped due to error: {translate_error}")
 
         # پاک کردن خطوط حاوی آیدی یا لینک
         lines = caption.split('\n')
@@ -75,7 +75,7 @@ async def handler(event):
                 cleaned_lines.append(line)
         caption = '\n'.join(cleaned_lines).strip()
         
-        # حذف تبلیغات انتهای کپشن
+        # حذف تبلیغات انتهای کپشن (۱ تا ۴ کلمه ای)
         caption_lines = caption.split('\n')
         if caption_lines:
             last_line = caption_lines[-1].strip()
@@ -83,18 +83,17 @@ async def handler(event):
                 caption_lines.pop()
                 caption = '\n'.join(caption_lines).strip()
 
-    # اضافه کردن امضا
+    # اضافه کردن امضا با یک خط فاصله
     signature = "\n\n🆔 @rash_kham"
     final_caption = caption + signature if caption else "🆔 @rash_kham"
     
     try:
-        # ارسال پیام به کانال (اگر فایل داشت با فایل، اگر نداشت فقط متن)
         if event.message.media:
             await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         elif final_caption:
             await bot.send_message(TARGET_CHANNEL_ID, final_caption)
-    except Exception as e:
-        print(f"Error sending to channel: {e}")
+    except Exception as send_error:
+        print(f"Error sending to channel: {send_error}")
 
-print("ربات دوم (نسخه تست بدون محدودیت تاپیک) روشن شد!")
+print("ربات دوم (نسخه ضد ضربه و مترجم) روشن شد!")
 bot.run_until_disconnected()
