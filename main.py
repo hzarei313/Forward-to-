@@ -28,8 +28,9 @@ Thread(target=run).start()
 
 bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# انبار موقت برای جمع‌آوری آلبوم‌ها
+# انبار موقت برای ذخیره آلبوم‌ها و آخرین متن فرستاده شده
 album_cache = {}
+last_text_cache = {}  # حافظه موقت برای ذخیره متن ادمین
 
 # تابع کمکی برای تبدیل اعداد انگلیسی به فارسی و قرار دادن ممیز
 def format_to_persian_date(num_str):
@@ -42,7 +43,12 @@ async def handler(event):
     if event.message.reply_to_msg_id != TARGET_TOPIC_ID:
         return
 
-    # ۲. فیلتر کردن رسانه‌ها
+    # ۲. اگر پیام فقط متن بود (بدون رسانه)، آن را در حافظه ذخیره کن و خارج شو
+    if event.message.text and not event.message.media:
+        last_text_cache[TARGET_TOPIC_ID] = event.message.text
+        return
+
+    # ۳. فیلتر کردن رسانه‌ها
     has_media = (
         event.message.photo or
         event.message.video or 
@@ -53,7 +59,7 @@ async def handler(event):
     if not has_media:
         return
 
-    # ۳. محاسبات دقیق تاریخ با فرمت ممیز (٫)
+    # ۴. محاسبات دقیق تاریخ با فرمت ممیز (٫)
     msg_date = event.message.date
     gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
     jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
@@ -62,38 +68,26 @@ async def handler(event):
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
     signature = "\n\n🆔 @rash_kham"
 
-    # ۴. بخش مدیریت آلبوم‌ها (رسانه‌های گروهی) + جفت‌سازی با متن قبل
+    # ۵. بخش مدیریت آلبوم‌ها (رسانه‌های گروهی)
     if event.message.grouped_id:
         gid = event.message.grouped_id
         if gid not in album_cache:
             album_cache[gid] = []
         album_cache[gid].append(event.message)
         
-        # ۳ ثانیه مهلت برای جمع‌آوری تمام قطعات آلبوم
         await asyncio.sleep(3)
         
-        # فقط اولین قطعه دریافت شده، عملیات ارسال را مدیریت می‌کند
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
             
-            # مرتب‌سازی پیام‌های آلبوم بر اساس آیدی برای پیدا کردن اولین قطعه واقعی
-            messages_to_send.sort(key=lambda m: m.id)
-            first_media_id = messages_to_send[0].id
-            
-            # بررسی اینکه آیا خود آلبوم متنی دارد یا خیر
+            # بررسی کپشن خود آلبوم
             extracted_caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
-            # اگر آلبوم اصلاً متن نداشت، پیام متنیِ قبل از کل آلبوم را شکار کن
-            if not extracted_caption:
-                try:
-                    # گرفتن پیام‌های قبل از شروع اولین قطعه آلبوم
-                    history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=first_media_id)
-                    if history and history[0].text and not history[0].media:
-                        # مطمئن می‌شویم پیام متنی قبلی در همین تاپیک باشد
-                        if history[0].reply_to_msg_id == TARGET_TOPIC_ID:
-                            extracted_caption = history[0].text
-                except Exception as e:
-                    print(f"Error fetching past message for album: {e}")
+            # اگر خود آلبوم متن نداشت، از متنی که ثانیه‌ای قبل در حافظه ذخیره شده استفاده کن
+            if not extracted_caption and TARGET_TOPIC_ID in last_text_cache:
+                extracted_caption = last_text_cache[TARGET_TOPIC_ID]
+                # پاک کردن حافظه بعد از استفاده
+                del last_text_cache[TARGET_TOPIC_ID]
             
             # پاک‌سازی متن (حذف لینک‌ها و آیدی‌های تبلیغاتی)
             if extracted_caption:
@@ -110,35 +104,27 @@ async def handler(event):
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
-                # ارسال کل آلبوم به همراه متن شکار شده از پیام قبل
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
                 print(f"Error sending album: {e}")
-            
-            # خالی کردن انبار آلبوم
             del album_cache[gid]
             
-    # ۵. بخش مدیریت فایل‌های تکی + جفت‌سازی با متن قبل
+    # ۶. بخش مدیریت فایل‌های تکی
     else:
         extracted_caption = event.message.text or ""
         
-        # اگر فایل تکی متن نداشت، پیام متنیِ یک ثانیه قبل را بردار
-        if not extracted_caption:
-            try:
-                history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=event.message.id)
-                if history and history[0].text and not history[0].media:
-                    if history[0].reply_to_msg_id == TARGET_TOPIC_ID:
-                        extracted_caption = history[0].text
-            except Exception as e:
-                print(f"Error fetching past message for single file: {e}")
-        
+        # اگر فایل تکی متن نداشت، از متنی که ثانیه‌ای قبل در حافظه ذخیره شده استفاده کن
+        if not extracted_caption and TARGET_TOPIC_ID in last_text_cache:
+            extracted_caption = last_text_cache[TARGET_TOPIC_ID]
+            del last_text_cache[TARGET_TOPIC_ID]
+            
         # پاک‌سازی متن فایل تکی
         if extracted_caption:
             lines = extracted_caption.split('\n')
             cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
             extracted_caption = '\n'.join(cleaned_lines).strip()
             
-            caption_lines = caption.split('\n')
+            caption_lines = extracted_caption.split('\n')
             if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                 caption_lines.pop()
                 extracted_caption = '\n'.join(caption_lines).strip()
@@ -150,5 +136,5 @@ async def handler(event):
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم (نسخه هوشمند جفت‌سازی آلبوم و رسانه تکی با متن قبل) فعال شد!")
+print("ربات دوم (نسخه حافظه زنده متوالی) فعال شد!")
 bot.run_until_disconnected()
