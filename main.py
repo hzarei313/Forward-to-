@@ -18,6 +18,9 @@ TARGET_TOPIC_ID = 234
 import datetime
 import jdatetime
 
+import datetime
+import jdatetime
+
 app = Flask('')
 @app.route('/')
 def home():
@@ -33,9 +36,9 @@ bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_t
 # انبار موقت برای جمع‌آوری آلبوم‌ها
 album_cache = {}
 
-# تابع کمکی برای تبدیل اعداد انگلیسی به فارسی (مخصوص تاریخ شمسی)
-def en_to_fa(num_str):
-    translation_table = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+# تابع کمکی برای تبدیل اعداد انگلیسی به فارسی و جایگذاری ممیز به جای نقطه
+def format_to_persian_date(num_str):
+    translation_table = str.maketrans("0123456789.", "۰۱۲۳۴۵۶۷۸۹٫")
     return num_str.translate(translation_table)
 
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
@@ -56,12 +59,15 @@ async def handler(event):
     if not has_media:
         return
 
-    # ۳. محاسبات تاریخ میلادی (انگلیسی) و شمسی (فارسی) پیام
+    # ۳. محاسبات تاریخ میلادی و شمسی با فرمت ممیز (٫)
     msg_date = event.message.date
-    gregorian_date = msg_date.strftime("%Y.%m.%d") # اعداد انگلیسی
     
-    jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y.%m.%d")
-    jalali_date = en_to_fa(jalali_raw) # تبدیل به اعداد فارسی
+    # تاریخ میلادی با ممیز انگلیسی
+    gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
+    
+    # تاریخ شمسی با اعداد فارسی و ممیز فارسی
+    jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
+    jalali_date = format_to_persian_date(jalali_raw)
     
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
 
@@ -73,8 +79,8 @@ async def handler(event):
         
         album_cache[gid].append(event.message)
         
-        # ۲ ثانیه منتظر بمان تا تمام فایل‌های آلبوم برسند
-        await asyncio.sleep(2)
+        # ۳ ثانیه صبر برای دریافت کامل قطعات آلبوم
+        await asyncio.sleep(3)
         
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
@@ -100,7 +106,6 @@ async def handler(event):
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
-                # ارسال فایل‌ها به صورت آلبوم یکجا (کپشن فقط روی فایل اول اعمال می‌شود)
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
                 print(f"Error sending album: {e}")
@@ -108,7 +113,7 @@ async def handler(event):
             del album_cache[gid]
             
     else:
-        # ۵. مدیریت پیام‌های تکی
+        # ۵. مدیریت پیام‌های تکی (به ویژه فایل‌های فوق سنگین)
         caption = event.message.text or ""
         if caption:
             lines = caption.split('\n')
@@ -124,18 +129,21 @@ async def handler(event):
         final_caption = caption + date_text + signature if caption else date_text + signature
         
         try:
+            # یک تاخیر کوچک چند ثانیه‌ای برای فایل‌های سنگین تکی تا آپلود تلگرام کامل شود
             file_size_mb = event.message.file.size / (1024 * 1024) if event.message.file else 0
-            
-            if file_size_mb > 400: # فایل‌های سنگین بالای ۴۰۰ مگابایت
-                # فوروارد بدون نقل‌قول و کاملاً مخفی
-                await event.message.forward_to(TARGET_CHANNEL_ID, drop_author=True)
-                # ارسال کپشن و تاریخ به عنوان پیام متنی مستقل زیر فایل
+            if file_size_mb > 150:
+                await asyncio.sleep(5) # ۵ ثانیه مهلت برای لود کامل فرستنده
+
+            if file_size_mb > 400: # فایل‌های بالای ۴۰۰ مگابایت
+                # فوروارد ۱۰۰٪ بدون نقل‌قول و بدون نام منبع
+                await bot.forward_messages(TARGET_CHANNEL_ID, event.message.id, SOURCE_GROUP_ID)
+                # ارسال کپشن مجزا زیر فایل سنگین
                 await bot.send_message(TARGET_CHANNEL_ID, final_caption)
             else:
-                # فایل‌های معمولی
+                # فایل‌های معمولی و سبک
                 await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم با فرمت تاریخ اختصاصی و رفع مشکل آلبوم‌ها آنلاین شد!")
+print("ربات دوم با سیستم فوروارد پایدار فایل‌های حجیم و تاریخ ممیزدار روشن شد!")
 bot.run_until_disconnected()
