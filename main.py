@@ -16,6 +16,9 @@ TARGET_CHANNEL_ID = -1001441969577  # آیدی عددی کانال مقصد جد
 # ---------------------------------------------
 TARGET_TOPIC_ID = 234
 
+import datetime
+import jdatetime
+
 app = Flask('')
 @app.route('/')
 def home():
@@ -28,8 +31,8 @@ Thread(target=run).start()
 
 bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# لیست موقت ضد تکرار پیام
-processed_messages = set()
+# انبار موقت برای جمع‌آوری آلبوم‌ها
+album_cache = {}
 
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
@@ -38,7 +41,7 @@ async def handler(event):
     if current_topic != TARGET_TOPIC_ID:
         return
 
-    # ۲. فیلتر کردن انواع رسانه‌ها (ویدیو، فایل، موزیک و ویس)
+    # ۲. فیلتر کردن انواع رسانه‌ها
     has_media = (
         event.message.video or 
         event.message.document or 
@@ -46,47 +49,82 @@ async def handler(event):
         event.message.voice
     )
     
-    if has_media:
-        # جلوگیری از ارسال پیام تکراری
-        if event.message.id in processed_messages:
-            return
-        processed_messages.add(event.message.id)
-        if len(processed_messages) > 100:
-            processed_messages.clear()
+    if not has_media:
+        return
 
-        caption = event.message.text or ""
+    # ۳. محاسبات تاریخ میلادی و شمسی پیام
+    msg_date = event.message.date
+    gregorian_date = msg_date.strftime("%Y.%m.%d")
+    jalali_date = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y.%m.%d")
+    
+    date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
+
+    # ۴. مدیریت پیام‌های آلبومی (گروهی)
+    if event.message.grouped_id:
+        gid = event.message.grouped_id
+        if gid not in album_cache:
+            album_cache[gid] = []
         
-        if caption:
-            # ۳. پاک کردن خطوط حاوی آیدی یا لینک
-            lines = caption.split('\n')
-            cleaned_lines = []
-            for line in lines:
-                if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', line):
-                    cleaned_lines.append(line)
-            caption = '\n'.join(cleaned_lines).strip()
+        album_cache[gid].append(event.message)
+        await asyncio.sleep(2)
+        
+        if album_cache[gid][0].id == event.message.id:
+            messages_to_send = album_cache[gid]
             
-            # ۴. حذف تبلیغات انتهای کپشن (۱ تا ۴ کلمه‌ای)
-            caption_lines = caption.split('\n')
-            if caption_lines:
-                last_line = caption_lines[-1].strip()
-                if 0 < len(last_line.split()) < 5:
+            caption = ""
+            for msg in messages_to_send:
+                if msg.text:
+                    caption = msg.text
+                    break
+            
+            if caption:
+                lines = caption.split('\n')
+                cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
+                caption = '\n'.join(cleaned_lines).strip()
+                
+                caption_lines = caption.split('\n')
+                if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                     caption_lines.pop()
                     caption = '\n'.join(caption_lines).strip()
 
-        # ۵. اضافه کردن امضا با یک خط فاصله
+            signature = "\n\n🆔 @rash_kham"
+            final_caption = caption + date_text + signature if caption else date_text + signature
+            
+            try:
+                media_list = [msg.media for msg in messages_to_send]
+                await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
+            except Exception as e:
+                print(f"Error sending album: {e}")
+            
+            del album_cache[gid]
+            
+    else:
+        # ۵. مدیریت پیام‌های تکی
+        caption = event.message.text or ""
+        if caption:
+            lines = caption.split('\n')
+            cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
+            caption = '\n'.join(cleaned_lines).strip()
+            
+            caption_lines = caption.split('\n')
+            if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
+                caption_lines.pop()
+                caption = '\n'.join(caption_lines).strip()
+
         signature = "\n\n🆔 @rash_kham"
-        final_caption = caption + signature if caption else "🆔 @rash_kham"
+        final_caption = caption + date_text + signature if caption else date_text + signature
         
         try:
-            media_to_send = (
-                event.message.video or 
-                event.message.document or 
-                event.message.audio or 
-                event.message.voice
-            )
-            await bot.send_file(TARGET_CHANNEL_ID, media_to_send, caption=final_caption)
+            file_size_mb = event.message.file.size / (1024 * 1024) if event.message.file else 0
+            
+            if file_size_mb > 400: # اگر بالای ۴۰۰ مگابایت بود
+                # فوروارد مخفی و بدون نام منبع اصلی
+                await event.message.forward_to(TARGET_CHANNEL_ID, drop_author=True)
+                await bot.send_message(TARGET_CHANNEL_ID, final_caption)
+            else:
+                await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
-            print(f"Error sending file: {e}")
+            print(f"Error sending single file: {e}")
 
-print("ربات دوم بدون مترجم و با سرعت بالا آنلاین شد!")
+print("ربات دوم (با قابلیت فوروارد بدون نقل‌قول) آپدیت شد!")
 bot.run_until_disconnected()
