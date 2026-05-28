@@ -30,7 +30,7 @@ bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_t
 
 # انبار موقت برای ذخیره آلبوم‌ها و آخرین متن فرستاده شده
 album_cache = {}
-last_text_cache = {}  # حافظه موقت برای ذخیره متن ادمین
+last_text_cache = {}
 
 # تابع کمکی برای تبدیل اعداد انگلیسی به فارسی و قرار دادن ممیز
 def format_to_persian_date(num_str):
@@ -59,10 +59,16 @@ async def handler(event):
     if not has_media:
         return
 
-    # ۴. محاسبات دقیق تاریخ با فرمت ممیز (٫)
-    msg_date = event.message.date
-    gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
-    jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
+    # ۴. محاسبات زنده و دقیق تاریخ به وقت ایران (حل مشکل بروز نشدن تاریخ)
+    # زمان پیام تلگرام را می‌گیریم و ۳ ساعت و ۳۰ دقیقه به آن اضافه می‌کنیم تا دقیقاً به وقت ایران تنظیم شود
+    utc_date = event.message.date
+    iran_date = utc_date + datetime.timedelta(hours=3, minutes=30)
+    
+    # استخراج تاریخ میلادی بروز شده
+    gregorian_date = iran_date.strftime("%Y/%m/%d").replace("/", "٫") 
+    
+    # استخراج تاریخ شمسی بروز شده
+    jalali_raw = jdatetime.datetime.fromgregorian(datetime=iran_date).strftime("%Y/%m/%d")
     jalali_date = format_to_persian_date(jalali_raw)
     
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
@@ -83,10 +89,9 @@ async def handler(event):
             # بررسی کپشن خود آلبوم
             extracted_caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
-            # اگر خود آلبوم متن نداشت، از متنی که ثانیه‌ای قبل در حافظه ذخیره شده استفاده کن
+            # اگر خود آلبوم متن نداشت، از متنی که در حافظه ذخیره شده استفاده کن
             if not extracted_caption and TARGET_TOPIC_ID in last_text_cache:
                 extracted_caption = last_text_cache[TARGET_TOPIC_ID]
-                # پاک کردن حافظه بعد از استفاده
                 del last_text_cache[TARGET_TOPIC_ID]
             
             # پاک‌سازی متن (حذف لینک‌ها و آیدی‌های تبلیغاتی)
@@ -113,7 +118,7 @@ async def handler(event):
     else:
         extracted_caption = event.message.text or ""
         
-        # اگر فایل تکی متن نداشت، از متنی که ثانیه‌ای قبل در حافظه ذخیره شده استفاده کن
+        # اگر فایل تکی متن نداشت، از متنی که در حافظه ذخیره شده استفاده کن
         if not extracted_caption and TARGET_TOPIC_ID in last_text_cache:
             extracted_caption = last_text_cache[TARGET_TOPIC_ID]
             del last_text_cache[TARGET_TOPIC_ID]
@@ -136,5 +141,5 @@ async def handler(event):
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم (نسخه حافظه زنده متوالی) فعال شد!")
+print("ربات دوم (با سیستم اصلاح خودکار تاریخ زنده به وقت ایران) فعال شد!")
 bot.run_until_disconnected()
