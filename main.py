@@ -38,11 +38,11 @@ def format_to_persian_date(num_str):
 
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
-    # ۱. بررسی اینکه پیام حتماً در تاپیک مورد نظر باشد
+    # ۱. بررسی آیدی تاپیک
     if event.message.reply_to_msg_id != TARGET_TOPIC_ID:
         return
 
-    # ۲. فیلتر کردن رسانه‌ها (عکس، ویدیو، فایل، آهنگ، ویس)
+    # ۲. فیلتر کردن رسانه‌ها
     has_media = (
         event.message.photo or
         event.message.video or 
@@ -55,11 +55,7 @@ async def handler(event):
 
     # ۳. محاسبات دقیق تاریخ با فرمت ممیز (٫)
     msg_date = event.message.date
-    
-    # تاریخ میلادی با ممیز انگلیسی
     gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
-    
-    # تاریخ شمسی با اعداد و ممیز فارسی
     jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
     jalali_date = format_to_persian_date(jalali_raw)
     
@@ -73,23 +69,27 @@ async def handler(event):
             album_cache[gid] = []
         album_cache[gid].append(event.message)
         
-        # ۳ ثانیه مهلت برای جمع‌آوری قطعات آلبوم
         await asyncio.sleep(3)
         
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
-            caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
-            if caption:
-                lines = caption.split('\n')
+            # گرفتن متنی که همراه فوروارد آلبوم نوشته شده است
+            forward_caption = next((msg.text for msg in messages_to_send if msg.text), "")
+            
+            # پاک‌سازی متن همراه فوروارد (اگر وجود داشته باشد)
+            if forward_caption:
+                lines = forward_caption.split('\n')
                 cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
-                caption = '\n'.join(cleaned_lines).strip()
-                caption_lines = caption.split('\n')
+                forward_caption = '\n'.join(cleaned_lines).strip()
+                
+                caption_lines = forward_caption.split('\n')
                 if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                     caption_lines.pop()
-                    caption = '\n'.join(caption_lines).strip()
+                    forward_caption = '\n'.join(caption_lines).strip()
 
-            final_caption = caption + date_text + signature if caption else date_text + signature
+            # چسباندن متن همراه فوروارد به ابتدای کپشن
+            final_caption = forward_caption + date_text + signature if forward_caption else date_text + signature
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
@@ -98,25 +98,30 @@ async def handler(event):
                 print(f"Error sending album: {e}")
             del album_cache[gid]
             
-    # ۵. بخش مدیریت پیام‌های تکی معمولی
+    # ۵. بخش مدیریت فایل‌های تکی
     else:
-        caption = event.message.text or ""
-        if caption:
-            lines = caption.split('\n')
+        # گرفتن متنی که همراه فایل تکی فوروارد شده است
+        forward_caption = event.message.text or ""
+        
+        # پاک‌سازی متن همراه فوروارد
+        if forward_caption:
+            lines = forward_caption.split('\n')
             cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
-            caption = '\n'.join(cleaned_lines).strip()
-            caption_lines = caption.split('\n')
+            forward_caption = '\n'.join(cleaned_lines).strip()
+            
+            caption_lines = forward_caption.split('\n')
             if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                 caption_lines.pop()
-                caption = '\n'.join(caption_lines).strip()
+                forward_caption = '\n'.join(caption_lines).strip()
 
-        final_caption = caption + date_text + signature if caption else date_text + signature
+        # چسباندن متن همراه فوروارد به ابتدای کپشن
+        final_caption = forward_caption + date_text + signature if forward_caption else date_text + signature
         
         try:
-            # ارسال یکپارچه با شناسه رسانه، بدون دانلود سنگین و بدون نقل قول
+            # ارسال یکپارچه با کپشن جدید و بدون نقل قول
             await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم با تنظیمات اصلی و تاریخ ممیزدار فعال شد!")
+print("ربات دوم (نسخه مدیریت متن همراه فوروارد) فعال شد!")
 bot.run_until_disconnected()
