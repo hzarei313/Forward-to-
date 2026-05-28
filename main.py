@@ -74,22 +74,31 @@ async def handler(event):
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
             
-            # گرفتن متنی که همراه فوروارد آلبوم نوشته شده است
-            forward_caption = next((msg.text for msg in messages_to_send if msg.text), "")
+            # بررسی کپشن خود آلبوم
+            extracted_caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
-            # پاک‌سازی متن همراه فوروارد (اگر وجود داشته باشد)
-            if forward_caption:
-                lines = forward_caption.split('\n')
+            # ترفند حافظه: اگر آلبوم اصلاً کپشن نداشت، به پیام قبلی در گروه نگاه کن
+            if not extracted_caption:
+                try:
+                    # گرفتن ۱ پیام قبل از این آلبوم در گروه
+                    history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=messages_to_send[0].id)
+                    if history and history[0].text and not history[0].media:
+                        extracted_caption = history[0].text
+                except Exception as e:
+                    print(f"Error fetching past message for album: {e}")
+            
+            # پاک‌سازی متن پیدا شده
+            if extracted_caption:
+                lines = extracted_caption.split('\n')
                 cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
-                forward_caption = '\n'.join(cleaned_lines).strip()
+                extracted_caption = '\n'.join(cleaned_lines).strip()
                 
-                caption_lines = forward_caption.split('\n')
+                caption_lines = extracted_caption.split('\n')
                 if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                     caption_lines.pop()
-                    forward_caption = '\n'.join(caption_lines).strip()
+                    extracted_caption = '\n'.join(caption_lines).strip()
 
-            # چسباندن متن همراه فوروارد به ابتدای کپشن
-            final_caption = forward_caption + date_text + signature if forward_caption else date_text + signature
+            final_caption = extracted_caption + date_text + signature if extracted_caption else date_text + signature
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
@@ -100,28 +109,36 @@ async def handler(event):
             
     # ۵. بخش مدیریت فایل‌های تکی
     else:
-        # گرفتن متنی که همراه فایل تکی فوروارد شده است
-        forward_caption = event.message.text or ""
+        extracted_caption = event.message.text or ""
         
-        # پاک‌سازی متن همراه فوروارد
-        if forward_caption:
-            lines = forward_caption.split('\n')
+        # ترفند حافظه برای فایل تکی: اگر فایل کپشن نداشت، پیام متنیِ یک ثانیه قبل را بردار
+        if not extracted_caption:
+            try:
+                history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=event.message.id)
+                if history and history[0].text and not history[0].media:
+                    # مطمئن می‌شویم پیام قبلی حتماً در همین تاپیک فرستاده شده باشد
+                    if history[0].reply_to_msg_id == TARGET_TOPIC_ID:
+                        extracted_caption = history[0].text
+            except Exception as e:
+                print(f"Error fetching past message for single file: {e}")
+        
+        # پاک‌سازی متن پیدا شده
+        if extracted_caption:
+            lines = extracted_caption.split('\n')
             cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
-            forward_caption = '\n'.join(cleaned_lines).strip()
+            extracted_caption = '\n'.join(cleaned_lines).strip()
             
-            caption_lines = forward_caption.split('\n')
+            caption_lines = extracted_caption.split('\n')
             if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                 caption_lines.pop()
-                forward_caption = '\n'.join(caption_lines).strip()
+                extracted_caption = '\n'.join(caption_lines).strip()
 
-        # چسباندن متن همراه فوروارد به ابتدای کپشن
-        final_caption = forward_caption + date_text + signature if forward_caption else date_text + signature
+        final_caption = extracted_caption + date_text + signature if extracted_caption else date_text + signature
         
         try:
-            # ارسال یکپارچه با کپشن جدید و بدون نقل قول
             await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم (نسخه مدیریت متن همراه فوروارد) فعال شد!")
+print("ربات دوم (نسخه هوشمند جفت‌سازی متن قبلی با فایل فورواردی) فعال شد!")
 bot.run_until_disconnected()
