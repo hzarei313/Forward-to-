@@ -1,6 +1,8 @@
 import re
 import os
 import asyncio
+import datetime
+import jdatetime
 from telethon import TelegramClient, events
 from flask import Flask
 from threading import Thread
@@ -14,9 +16,6 @@ SOURCE_GROUP_ID = -1002201375304  # آیدی عددی گروه مبدا جدید
 TARGET_CHANNEL_ID = -1001441969577  # آیدی عددی کانال مقصد جدید
 # ---------------------------------------------
 TARGET_TOPIC_ID = 234
-
-import datetime
-import jdatetime
 
 app = Flask('')
 @app.route('/')
@@ -33,66 +32,58 @@ bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_t
 # انبار موقت برای جمع‌آوری آلبوم‌ها
 album_cache = {}
 
-# تابع کمکی برای تبدیل اعداد انگلیسی به فارسی و جایگذاری ممیز به جای نقطه
+# تابع تبدیل اعداد انگلیسی به فارسی و ممیزدار کردن تاریخ
 def format_to_persian_date(num_str):
     translation_table = str.maketrans("0123456789.", "۰۱۲۳۴۵۶۷۸۹٫")
     return num_str.translate(translation_table)
 
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
-    # ۱. بررسی اینکه پیام حتماً در تاپیک مورد نظر باشد
-    current_topic = event.message.reply_to_msg_id
-    if current_topic != TARGET_TOPIC_ID:
+    # ۱. بررسی آیدی تاپیک
+    if event.message.reply_to_msg_id != TARGET_TOPIC_ID:
         return
 
-    # ۲. فیلتر کردن انواع رسانه‌ها
+    # ۲. بررسی وجود رسانه (ویدیو، فایل، آهنگ، ویس)
     has_media = (
         event.message.video or 
         event.message.document or 
         event.message.audio or 
         event.message.voice
     )
-    
     if not has_media:
         return
 
-    # ۳. محاسبات تاریخ میلادی و شمسی با فرمت ممیز (٫)
+    # ۳. آماده‌سازی تاریخ انتشار (شمسی فارسی و میلادی انگلیسی)
     msg_date = event.message.date
     gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
     jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
     jalali_date = format_to_persian_date(jalali_raw)
     
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
+    signature = "\n\n🆔 @rash_kham"
 
-    # ۴. مدیریت پیام‌های آلبومی (گروهی)
+    # ۴. مدیریت آلبوم‌ها (پیام‌های گروهی)
     if event.message.grouped_id:
         gid = event.message.grouped_id
         if gid not in album_cache:
             album_cache[gid] = []
-        
         album_cache[gid].append(event.message)
+        
         await asyncio.sleep(3)
         
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
-            
-            caption = ""
-            for msg in messages_to_send:
-                if msg.text:
-                    caption = msg.text
-                    break
+            caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
             if caption:
                 lines = caption.split('\n')
                 cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
                 caption = '\n'.join(cleaned_lines).strip()
-                
                 caption_lines = caption.split('\n')
                 if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                     caption_lines.pop()
                     caption = '\n'.join(caption_lines).strip()
 
-            signature = "\n\n🆔 @rash_kham"
             final_caption = caption + date_text + signature if caption else date_text + signature
             
             try:
@@ -100,38 +91,27 @@ async def handler(event):
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
                 print(f"Error sending album: {e}")
-            
             del album_cache[gid]
             
+    # ۵. مدیریت فایل‌های تکی (چه ۱ مگابایت چه ۲ گیگابایت)
     else:
-        # ۵. مدیریت پیام‌های تکی (پیاده‌سازی دقیق فرآیند دستی شما)
         caption = event.message.text or ""
         if caption:
             lines = caption.split('\n')
             cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
             caption = '\n'.join(cleaned_lines).strip()
-            
             caption_lines = caption.split('\n')
             if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                 caption_lines.pop()
                 caption = '\n'.join(caption_lines).strip()
 
-        signature = "\n\n🆔 @rash_kham"
         final_caption = caption + date_text + signature if caption else date_text + signature
         
         try:
-            # قدم اول دستی: ابتدا پیام موجود در گروه را ادیت می‌زنیم تا کپشنش تمیز شود
-            await bot.edit_message(SOURCE_GROUP_ID, event.message.id, text=final_caption)
-            
-            # یک ثانیه فاصله برای اعمال تغییرات در سرور تلگرام
-            await asyncio.sleep(1)
-            
-            # قدم دوم دستی: حالا پیامِ ادیت‌شده و تمیز را بدون نقل‌قول به کانال فوروارد می‌کنیم
-            await bot.forward_messages(TARGET_CHANNEL_ID, event.message.id, SOURCE_GROUP_ID)
-            
-            print("فایل حجیم طبق فرآیند دستی با موفقیت ادیت و فوروارد شد.")
+            # ارسال مستقیم با شناسه رسانه؛ بدون دانلود، بدون نقل‌قول و بدون تگ ادیت
+            await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
-            print(f"Error in manual simulation flow: {e}")
+            print(f"Error sending single file: {e}")
 
-print("ربات دوم (نسخه شبیه‌ساز عملیات دستی) آنلاین شد!")
+print("ربات دوم با ساختار کاملاً اصلاح‌شده و تمیز آنلاین شد!")
 bot.run_until_disconnected()
