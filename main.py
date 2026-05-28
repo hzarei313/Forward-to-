@@ -71,7 +71,6 @@ async def handler(event):
             album_cache[gid] = []
         
         album_cache[gid].append(event.message)
-        
         await asyncio.sleep(3)
         
         if album_cache[gid][0].id == event.message.id:
@@ -97,7 +96,6 @@ async def handler(event):
             final_caption = caption + date_text + signature if caption else date_text + signature
             
             try:
-                # ارسال آلبوم با شناسه فایل‌ها بدون دانلود
                 media_list = [msg.media for msg in messages_to_send]
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
@@ -106,7 +104,7 @@ async def handler(event):
             del album_cache[gid]
             
     else:
-        # ۵. مدیریت پیام‌های تکی (سبک و سنگین به یک روش)
+        # ۵. مدیریت پیام‌های تکی (پیاده‌سازی دقیق فرآیند دستی شما)
         caption = event.message.text or ""
         if caption:
             lines = caption.split('\n')
@@ -122,11 +120,18 @@ async def handler(event):
         final_caption = caption + date_text + signature if caption else date_text + signature
         
         try:
-            # ترفند نهایی: ارسال فایل با استفاده از آدرس مستقیم مدیا (بدون دانلود/آپلود و بدون نقل‌قول)
-            # این روش برای فایل‌های چند گیگابایتی هم فورا و یکپارچه کار می‌کند
-            await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
+            # قدم اول دستی: ابتدا پیام موجود در گروه را ادیت می‌زنیم تا کپشنش تمیز شود
+            await bot.edit_message(SOURCE_GROUP_ID, event.message.id, text=final_caption)
+            
+            # یک ثانیه فاصله برای اعمال تغییرات در سرور تلگرام
+            await asyncio.sleep(1)
+            
+            # قدم دوم دستی: حالا پیامِ ادیت‌شده و تمیز را بدون نقل‌قول به کانال فوروارد می‌کنیم
+            await bot.forward_messages(TARGET_CHANNEL_ID, event.message.id, SOURCE_GROUP_ID)
+            
+            print("فایل حجیم طبق فرآیند دستی با موفقیت ادیت و فوروارد شد.")
         except Exception as e:
-            print(f"Error sending single file: {e}")
+            print(f"Error in manual simulation flow: {e}")
 
-print("ربات دوم (ارسال یکپارچه فایل حجیم با متد آدرس‌دهی مستقیم) آنلاین شد!")
+print("ربات دوم (نسخه شبیه‌ساز عملیات دستی) آنلاین شد!")
 bot.run_until_disconnected()
