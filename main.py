@@ -3,8 +3,6 @@ import os
 from telethon import TelegramClient, events
 from flask import Flask
 from threading import Thread
-import asyncio
-from deep_translator import GoogleTranslator
 
 # --- تنظیمات ربات دوم (این مقادیر را دقیق تغییر دهید) ---
 API_ID = 36850805            # همان ای‌آی‌دی قبلی شما
