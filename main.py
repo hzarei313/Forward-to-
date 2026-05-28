@@ -62,32 +62,40 @@ async def handler(event):
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
     signature = "\n\n🆔 @rash_kham"
 
-    # ۴. بخش مدیریت آلبوم‌ها (رسانه‌های گروهی)
+    # ۴. بخش مدیریت آلبوم‌ها (رسانه‌های گروهی) + جفت‌سازی با متن قبل
     if event.message.grouped_id:
         gid = event.message.grouped_id
         if gid not in album_cache:
             album_cache[gid] = []
         album_cache[gid].append(event.message)
         
+        # ۳ ثانیه مهلت برای جمع‌آوری تمام قطعات آلبوم
         await asyncio.sleep(3)
         
+        # فقط اولین قطعه دریافت شده، عملیات ارسال را مدیریت می‌کند
         if album_cache[gid][0].id == event.message.id:
             messages_to_send = album_cache[gid]
             
-            # بررسی کپشن خود آلبوم
+            # مرتب‌سازی پیام‌های آلبوم بر اساس آیدی برای پیدا کردن اولین قطعه واقعی
+            messages_to_send.sort(key=lambda m: m.id)
+            first_media_id = messages_to_send[0].id
+            
+            # بررسی اینکه آیا خود آلبوم متنی دارد یا خیر
             extracted_caption = next((msg.text for msg in messages_to_send if msg.text), "")
             
-            # ترفند حافظه: اگر آلبوم اصلاً کپشن نداشت، به پیام قبلی در گروه نگاه کن
+            # اگر آلبوم اصلاً متن نداشت، پیام متنیِ قبل از کل آلبوم را شکار کن
             if not extracted_caption:
                 try:
-                    # گرفتن ۱ پیام قبل از این آلبوم در گروه
-                    history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=messages_to_send[0].id)
+                    # گرفتن پیام‌های قبل از شروع اولین قطعه آلبوم
+                    history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=first_media_id)
                     if history and history[0].text and not history[0].media:
-                        extracted_caption = history[0].text
+                        # مطمئن می‌شویم پیام متنی قبلی در همین تاپیک باشد
+                        if history[0].reply_to_msg_id == TARGET_TOPIC_ID:
+                            extracted_caption = history[0].text
                 except Exception as e:
                     print(f"Error fetching past message for album: {e}")
             
-            # پاک‌سازی متن پیدا شده
+            # پاک‌سازی متن (حذف لینک‌ها و آیدی‌های تبلیغاتی)
             if extracted_caption:
                 lines = extracted_caption.split('\n')
                 cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
@@ -102,33 +110,35 @@ async def handler(event):
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
+                # ارسال کل آلبوم به همراه متن شکار شده از پیام قبل
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
                 print(f"Error sending album: {e}")
+            
+            # خالی کردن انبار آلبوم
             del album_cache[gid]
             
-    # ۵. بخش مدیریت فایل‌های تکی
+    # ۵. بخش مدیریت فایل‌های تکی + جفت‌سازی با متن قبل
     else:
         extracted_caption = event.message.text or ""
         
-        # ترفند حافظه برای فایل تکی: اگر فایل کپشن نداشت، پیام متنیِ یک ثانیه قبل را بردار
+        # اگر فایل تکی متن نداشت، پیام متنیِ یک ثانیه قبل را بردار
         if not extracted_caption:
             try:
                 history = await bot.get_messages(SOURCE_GROUP_ID, limit=1, max_id=event.message.id)
                 if history and history[0].text and not history[0].media:
-                    # مطمئن می‌شویم پیام قبلی حتماً در همین تاپیک فرستاده شده باشد
                     if history[0].reply_to_msg_id == TARGET_TOPIC_ID:
                         extracted_caption = history[0].text
             except Exception as e:
                 print(f"Error fetching past message for single file: {e}")
         
-        # پاک‌سازی متن پیدا شده
+        # پاک‌سازی متن فایل تکی
         if extracted_caption:
             lines = extracted_caption.split('\n')
             cleaned_lines = [l for l in lines if not re.search(r'(@\w+|https?://[^\s]+|t\.me/[^\s]+)', l)]
             extracted_caption = '\n'.join(cleaned_lines).strip()
             
-            caption_lines = extracted_caption.split('\n')
+            caption_lines = caption.split('\n')
             if caption_lines and 0 < len(caption_lines[-1].strip().split()) < 5:
                 caption_lines.pop()
                 extracted_caption = '\n'.join(caption_lines).strip()
@@ -140,5 +150,5 @@ async def handler(event):
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم (نسخه هوشمند جفت‌سازی متن قبلی با فایل فورواردی) فعال شد!")
+print("ربات دوم (نسخه هوشمند جفت‌سازی آلبوم و رسانه تکی با متن قبل) فعال شد!")
 bot.run_until_disconnected()
