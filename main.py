@@ -18,9 +18,6 @@ TARGET_TOPIC_ID = 234
 import datetime
 import jdatetime
 
-import datetime
-import jdatetime
-
 app = Flask('')
 @app.route('/')
 def home():
@@ -61,11 +58,7 @@ async def handler(event):
 
     # ۳. محاسبات تاریخ میلادی و شمسی با فرمت ممیز (٫)
     msg_date = event.message.date
-    
-    # تاریخ میلادی با ممیز انگلیسی
     gregorian_date = msg_date.strftime("%Y/%m/%d").replace("/", "٫") 
-    
-    # تاریخ شمسی با اعداد فارسی و ممیز فارسی
     jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y/%m/%d")
     jalali_date = format_to_persian_date(jalali_raw)
     
@@ -79,7 +72,6 @@ async def handler(event):
         
         album_cache[gid].append(event.message)
         
-        # ۳ ثانیه صبر برای دریافت کامل قطعات آلبوم
         await asyncio.sleep(3)
         
         if album_cache[gid][0].id == event.message.id:
@@ -105,6 +97,7 @@ async def handler(event):
             final_caption = caption + date_text + signature if caption else date_text + signature
             
             try:
+                # ارسال آلبوم با شناسه فایل‌ها بدون دانلود
                 media_list = [msg.media for msg in messages_to_send]
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
@@ -113,7 +106,7 @@ async def handler(event):
             del album_cache[gid]
             
     else:
-        # ۵. مدیریت پیام‌های تکی (به ویژه فایل‌های فوق سنگین)
+        # ۵. مدیریت پیام‌های تکی (سبک و سنگین به یک روش)
         caption = event.message.text or ""
         if caption:
             lines = caption.split('\n')
@@ -129,21 +122,11 @@ async def handler(event):
         final_caption = caption + date_text + signature if caption else date_text + signature
         
         try:
-            # یک تاخیر کوچک چند ثانیه‌ای برای فایل‌های سنگین تکی تا آپلود تلگرام کامل شود
-            file_size_mb = event.message.file.size / (1024 * 1024) if event.message.file else 0
-            if file_size_mb > 150:
-                await asyncio.sleep(5) # ۵ ثانیه مهلت برای لود کامل فرستنده
-
-            if file_size_mb > 400: # فایل‌های بالای ۴۰۰ مگابایت
-                # فوروارد ۱۰۰٪ بدون نقل‌قول و بدون نام منبع
-                await bot.forward_messages(TARGET_CHANNEL_ID, event.message.id, SOURCE_GROUP_ID)
-                # ارسال کپشن مجزا زیر فایل سنگین
-                await bot.send_message(TARGET_CHANNEL_ID, final_caption)
-            else:
-                # فایل‌های معمولی و سبک
-                await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
+            # ترفند نهایی: ارسال فایل با استفاده از آدرس مستقیم مدیا (بدون دانلود/آپلود و بدون نقل‌قول)
+            # این روش برای فایل‌های چند گیگابایتی هم فورا و یکپارچه کار می‌کند
+            await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم با سیستم فوروارد پایدار فایل‌های حجیم و تاریخ ممیزدار روشن شد!")
+print("ربات دوم (ارسال یکپارچه فایل حجیم با متد آدرس‌دهی مستقیم) آنلاین شد!")
 bot.run_until_disconnected()
