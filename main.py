@@ -1,5 +1,6 @@
 import re
 import os
+import asyncio
 from telethon import TelegramClient, events
 from flask import Flask
 from threading import Thread
@@ -32,6 +33,11 @@ bot = TelegramClient('second_caption_bot_session', API_ID, API_HASH).start(bot_t
 # انبار موقت برای جمع‌آوری آلبوم‌ها
 album_cache = {}
 
+# تابع کمکی برای تبدیل اعداد انگلیسی به فارسی (مخصوص تاریخ شمسی)
+def en_to_fa(num_str):
+    translation_table = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    return num_str.translate(translation_table)
+
 @bot.on(events.NewMessage(chats=SOURCE_GROUP_ID))
 async def handler(event):
     # ۱. بررسی اینکه پیام حتماً در تاپیک مورد نظر باشد
@@ -50,10 +56,12 @@ async def handler(event):
     if not has_media:
         return
 
-    # ۳. محاسبات تاریخ میلادی و شمسی پیام
+    # ۳. محاسبات تاریخ میلادی (انگلیسی) و شمسی (فارسی) پیام
     msg_date = event.message.date
-    gregorian_date = msg_date.strftime("%Y.%m.%d")
-    jalali_date = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y.%m.%d")
+    gregorian_date = msg_date.strftime("%Y.%m.%d") # اعداد انگلیسی
+    
+    jalali_raw = jdatetime.datetime.fromgregorian(datetime=msg_date).strftime("%Y.%m.%d")
+    jalali_date = en_to_fa(jalali_raw) # تبدیل به اعداد فارسی
     
     date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
 
@@ -64,6 +72,8 @@ async def handler(event):
             album_cache[gid] = []
         
         album_cache[gid].append(event.message)
+        
+        # ۲ ثانیه منتظر بمان تا تمام فایل‌های آلبوم برسند
         await asyncio.sleep(2)
         
         if album_cache[gid][0].id == event.message.id:
@@ -90,6 +100,7 @@ async def handler(event):
             
             try:
                 media_list = [msg.media for msg in messages_to_send]
+                # ارسال فایل‌ها به صورت آلبوم یکجا (کپشن فقط روی فایل اول اعمال می‌شود)
                 await bot.send_file(TARGET_CHANNEL_ID, media_list, caption=[final_caption] + [""] * (len(media_list) - 1))
             except Exception as e:
                 print(f"Error sending album: {e}")
@@ -115,14 +126,16 @@ async def handler(event):
         try:
             file_size_mb = event.message.file.size / (1024 * 1024) if event.message.file else 0
             
-            if file_size_mb > 400: # اگر بالای ۴۰۰ مگابایت بود
-                # فوروارد مخفی و بدون نام منبع اصلی
+            if file_size_mb > 400: # فایل‌های سنگین بالای ۴۰۰ مگابایت
+                # فوروارد بدون نقل‌قول و کاملاً مخفی
                 await event.message.forward_to(TARGET_CHANNEL_ID, drop_author=True)
+                # ارسال کپشن و تاریخ به عنوان پیام متنی مستقل زیر فایل
                 await bot.send_message(TARGET_CHANNEL_ID, final_caption)
             else:
+                # فایل‌های معمولی
                 await bot.send_file(TARGET_CHANNEL_ID, event.message.media, caption=final_caption)
         except Exception as e:
             print(f"Error sending single file: {e}")
 
-print("ربات دوم (با قابلیت فوروارد بدون نقل‌قول) آپدیت شد!")
+print("ربات دوم با فرمت تاریخ اختصاصی و رفع مشکل آلبوم‌ها آنلاین شد!")
 bot.run_until_disconnected()
