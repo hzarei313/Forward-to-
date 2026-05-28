@@ -119,4 +119,4 @@ async def handler(event):
             print(f"Error sending single file: {e}")
 
 print("ربات دوم با تنظیمات اصلی و تاریخ ممیزدار فعال شد!")
-bot.run_until_disconnected() و 
+bot.run_until_disconnected()
