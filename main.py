@@ -71,7 +71,7 @@ async def handler(event):
     jalali_raw = jdatetime.datetime.fromgregorian(datetime=iran_date).strftime("%Y/%m/%d")
     jalali_date = format_to_persian_date(jalali_raw)
     
-    date_text = f"\n\n📅 تاریخ انتشار : {jalali_date} - {gregorian_date}"
+    date_text = f"\n\n🗓️ تاریخ انتشار : {jalali_date} - {gregorian_date}"
     signature = "\n\n🆔 @rash_kham"
 
     # ۵. بخش مدیریت آلبوم‌ها (رسانه‌های گروهی)
