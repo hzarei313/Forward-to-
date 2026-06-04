@@ -8,8 +8,8 @@ from flask import Flask
 from threading import Thread
 
 # --- تنظیمات ربات دوم (این مقادیر را دقیق تغییر دهید) ---
-API_ID = 36850805            # همان ای‌آی‌دی قبلی شما
-API_HASH = 'f3e90cffb1a5ca214883a0b886ad62b4'  # همان ای‌پ‌آی هش قبلی شما
+API_ID = 35673437            # همان ای‌آی‌دی قبلی شما
+API_HASH = '0ef1cecd58655cb567c0bf6567bbdb98'  # همان ای‌پ‌آی هش قبلی شما
 BOT_TOKEN = '303518559:AAEHaWu6bPyirGk9wEEeggpa6j3ze85KtMo'  # توکن ربات جدید (دوم) شما
 
 SOURCE_GROUP_ID = -1002201375304  # آیدی عددی گروه مبدا جدید
