@@ -3,32 +3,6 @@ import os
 import asyncio
 import datetime
 import jdatetime
-from telethon import TelegramClient, events
-from flask import Flask
-from threading import Thread
-
-# --- تنظیمات ربات دوم (این مقادیر را دقیق تغییر دهید) ---
-API_ID = 35673437            # همان ای‌آی‌دی قبلی شما
-API_HASH = '0ef1cecd58655cb567c0bf6567bbdb98'  # همان ای‌پ‌آی هش قبلی شما
-BOT_TOKEN = '8672515067:AAHRHLhdgJ-STX8VK9gR2Z20Aj9lp0KA-Xo'  # توکن ربات جدید (دوم) شما
-
-SOURCE_GROUP_ID = -1002201375304  # آیدی عددی گروه مبدا جدید
-TARGET_CHANNEL_ID = -1001441969577  # آیدی عددی کانال مقصد جدید
-TARGET_TOPIC_ID = 234
-# ---------------------------------------------
-app = Flask('')
-@app.route('/')
-def home():
-    return "Bot 2 is running perfectly!"
-
-def run():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
-
-import re
-import os
-import asyncio
-import datetime
-import jdatetime
 import sys
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -39,10 +13,10 @@ from hypercorn.asyncio import serve
 # پیکربندی لایه بافر خروجی جهت ثبت آنی وقایع در کنسول سرور ابری Render
 sys.stdout.reconfigure(line_buffering=True)
 
-# --- تنظیمات احراز هویت امن ---
-API_ID = 36850805         
-API_HASH = 'f3e90cffb1a5ca214883a0b886ad62b4'  
-BOT_TOKEN = '303518559:AAEHaWu6bPyirGk9wEEeggpa6j3ze85KtMo'  
+# --- تنظیمات احراز هویت امن (مشخصات اکانت و ربات جدید شما) ---
+API_ID = 35673437            
+API_HASH = '0ef1cecd58655cb567c0bf6567bbdb98'  
+BOT_TOKEN = '8672515067:AAHRHLhdgJ-STX8VK9gR2Z20Aj9lp0KA-Xo'  
 
 SOURCE_GROUP_ID = -1002201375304  
 TARGET_CHANNEL_ID = -1001441969577  
@@ -100,7 +74,8 @@ def generate_date_payload(utc_date) -> str:
     return f"\n\n🗓️ تاریخ انتشار : {jalali_date} - {gregorian_date}\n\n🆔 @rash_kham"
 
 # --- نمونه‌سازی هوشمند کلاینت تلگرام ---
-SESSION_DATA = os.environ.get("TELETHON_SESSION_STRING", "second_caption_bot_session")
+# تغییر نام سشن پیش‌فرض به v3 جهت نادیده گرفتن فایل سشن خراب و قدیمی قبلی در رندر
+SESSION_DATA = os.environ.get("TELETHON_SESSION_STRING", "second_caption_bot_session_v3")
 
 bot = TelegramClient(
     SESSION_DATA, 
@@ -133,7 +108,6 @@ async def process_delayed_album(grouped_id: int):
             raw_caption = last_text_cache.pop(TARGET_TOPIC_ID)
             
         cleaned_text = clean_caption(raw_caption)
-        # اصلاح ارور متادیتای تاریخ آلبوم بر اساس اولین قطعه رسانه
         date_signature = generate_date_payload(messages[0].date)
         final_caption = cleaned_text + date_signature if cleaned_text else date_signature
         
@@ -156,7 +130,6 @@ async def incoming_message_handler(event):
     if event.message.reply_to_msg_id != TARGET_TOPIC_ID:
         return
 
-    # اصلاح خطای انتساب مستقیم متغیر محلی در کش متون خالص
     if event.message.text and not event.message.media:
         last_text_cache[TARGET_TOPIC_ID] = event.message.text
         return
@@ -174,7 +147,7 @@ async def incoming_message_handler(event):
     if event.message.grouped_id:
         gid = event.message.grouped_id
         if gid not in album_cache:
-            album_cache[gid] = [] # اصلاح خطای خالی رها شدن آرایه
+            album_cache[gid] = [] 
         album_cache[gid].append(event.message)
         
         if gid in album_tasks:
@@ -205,7 +178,6 @@ async def start_application():
     print("Telegram client connected successfully.", flush=True)
 
     web_config = Config()
-    # اختصاص پورت پیش‌فرض ۱۰اندازی ابری رندر با استاندارد هاستینگ
     web_config.bind = [f"0.0.0.0:{os.environ.get('PORT', '10000')}"]
 
     await asyncio.gather(
